@@ -4,10 +4,11 @@ import datetime, pytz
 from functools import wraps
 
 app = Flask(__name__)
-app.secret_key = 'supersecretkey123'          # ← заміни для безпеки
+app.secret_key = 'supersecretkey123'  # заміни на свій секретний ключ
+
 KYIV_TZ = pytz.timezone('Europe/Kiev')
 
-# ---------- Початкові матчі ----------
+# Початкові матчі
 matches = [
     {
         'id': 1,
@@ -50,12 +51,13 @@ matches = [
     },
 ]
 
-# ---------- Користувачі ----------
-users = {'admin': {'password_hash': generate_password_hash('admin'), 'bets': {}}}
-
-# ---------- Допоміжні ----------
-def get_next_match_id():
-    return max((m['id'] for m in matches), default=0) + 1
+# Користувачі
+users = {
+    'admin': {
+        'password_hash': generate_password_hash('admin'),
+        'bets': {}
+    }
+}
 
 def current_kyiv_time():
     return datetime.datetime.now(KYIV_TZ)
@@ -71,185 +73,131 @@ def calculate_leaderboard():
             if not bet:
                 continue
             if bet == m['result']:
-                wins += 1; points += 3
+                wins += 1
+                points += 3
             else:
-                losses += 1; points -= 1
+                losses += 1
+                points -= 1
         board[user] = {'wins': wins, 'losses': losses, 'points': points}
+    # Сортуємо за очками
     return dict(sorted(board.items(), key=lambda x: x[1]['points'], reverse=True))
 
 def admin_required(f):
     @wraps(f)
-    def wrapper(*a, **kw):
+    def wrapper(*args, **kwargs):
         if session.get('user') != 'admin':
             return "Доступ заборонено", 403
-        return f(*a, **kw)
+        return f(*args, **kwargs)
     return wrapper
 
-# ---------- HTML шаблон ----------
 PAGE_TEMPLATE = '''
-<!DOCTYPE html><html lang="uk"><head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Ставки на матчі</title>
-<style>
- body{margin:0;padding:0;font-family:Arial,sans-serif;
-      background:url("https://content.rozetka.com.ua/goods/images/big/27254638.jpg") no-repeat center fixed;
-      background-size:cover;color:#222;overflow-x:hidden;}
- .container{display:flex;max-width:1600px;margin:0 auto;width:100%;
-            height:100vh;padding:10px;box-sizing:border-box;}
- .block{position:relative;background:rgba(255,255,255,.6);margin:5px;padding:10px;border-radius:8px;
-        overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column;}
- .left{width:38%}.center{width:42%}.right{width:18%}
- .block::before{content:"";background:url("https://footking.mobi/union/logo/big3.jpg?r=222") no-repeat center;
-                background-size:contain;opacity:.15;position:absolute;top:50%;left:50%;
-                transform:translate(-50%,-50%);width:60%;height:60%;pointer-events:none;z-index:0;}
- .block>*{position:relative;z-index:1;}
- table{width:100%;border-collapse:collapse;font-size:14px;max-width:100%;}
- th,td{padding:6px;border:1px solid #aaa;text-align:center;}
- .champ-col{text-align:center;white-space:normal;word-wrap:break-word;}
- .btn{padding:5px 8px;margin:2px;border:none;border-radius:4px;cursor:pointer;color:#fff;background:#337ab7;font-size:12px}
- .btn-danger{background:#d9534f}.btn-success{background:#5cb85c}
- a{color:#337ab7;text-decoration:none;}a:hover{text-decoration:underline;}
- .status-live{background:#5cb85c;color:#fff;font-weight:bold;padding:3px 6px;border-radius:4px;}
- .status-finished{background:#d9534f;color:#fff;font-weight:bold;padding:3px 6px;border-radius:4px;}
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8" />
+    <title>ФК Прогнози</title>
+    <style>
+    body { font-family: Arial, sans-serif; background: #111; color: #ddd; margin: 0; padding: 20px; }
+    a { color: #55f; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .match { border: 1px solid #333; padding: 10px; margin-bottom: 10px; }
+    .finished { background: #222; }
+    .live { background: #300; }
+    .upcoming { background: #033; }
+    .bets { margin-top: 10px; }
+    form { margin-top: 5px; }
+    input[type=submit] { background: #555; color: white; border: none; padding: 5px 10px; cursor: pointer; }
+    input[type=submit]:hover { background: #77f; }
+    .leaderboard { margin-top: 20px; }
+    </style>
+</head>
+<body>
+<h1>Прогнози на матчі</h1>
 
- /* ---- мобільна адаптивність ---- */
- @media (max-width: 800px){
-   .container{flex-direction:column;height:auto;padding:5px;}
-   .left,.center,.right{width:100%;margin:4px 0;}
-   .block{height:auto;}
-   table{font-size:13px;display:block;overflow-x:auto;}
-   th,td{padding:4px;}
-   .btn,input,select{display:block;width:100%;font-size:14px;}
- }
-</style></head><body>
-<div class="container">
-
-<!-- Лівий блок -->
-<div class="left block"><h2>Матчі в процесі / завершені</h2>
-<table>
- <tr><th>Тур</th><th class="champ-col">Чемпіонат</th><th>Команди</th><th>Час</th><th>Рахунок</th><th>Результат</th><th>Статус</th>{% if is_admin %}<th>Дії</th>{% endif %}</tr>
- {% for m in left_matches %}
- <tr>
-  <td>{{m.round}}</td>
-  <td class="champ-col">{{m.championship.replace(' ','<br>')|safe}}</td>
-  <td><a href="{{m.link_team1}}" target="_blank">{{m.team1}}</a> - <a href="{{m.link_team2}}" target="_blank">{{m.team2}}</a></td>
-  <td>{{m.start_time_local}}</td>
-  <td>{{m.score or '-'}}</td>
-  <td>
-    {% if m.status=='live' and not m.result %}LIVE
-    {% else %}
-      {% if   m.result=='P1' %}П1
-      {% elif m.result=='X'  %}Х
-      {% elif m.result=='P2' %}П2
-      {% else %}---{% endif %}
-    {% endif %}
-  </td>
-  <td>{% if m.status=='live' %}<span class="status-live">LIVE</span>{% else %}<span class="status-finished">Завершено</span>{% endif %}</td>
-  {% if is_admin %}
-  <td>
-    <form style="display:inline" method="post" action="{{url_for('admin_toggle_status',match_id=m.id)}}">
-      <button class="btn {% if m.status=='live' %}btn-danger{% else %}btn-success{% endif %}">
-        {% if m.status=='live' %}Завершити{% else %}LIVE{% endif %}
-      </button>
-    </form>
-    <form style="display:inline" method="post" action="{{url_for('admin_update_score',match_id=m.id)}}">
-      <input name="score" value="{{m.score}}" size="5">
-      <select name="result">
-        <option value=""  {% if not m.result %}selected{% endif %}>---</option>
-        <option value="P1" {% if m.result=='P1' %}selected{% endif %}>П1</option>
-        <option value="X"  {% if m.result=='X'  %}selected{% endif %}>Х</option>
-        <option value="P2" {% if m.result=='P2' %}selected{% endif %}>П2</option>
-      </select>
-      <button class="btn">OK</button>
-    </form>
-    <form style="display:inline" method="post" action="{{url_for('admin_delete_match',match_id=m.id)}}">
-      <button class="btn btn-danger">DEL</button>
-    </form>
-  </td>
-  {% endif %}
- </tr>
- {% endfor %}
-</table>
-</div>
-
-<!-- Центральний блок -->
-<div class="center block"><h2>Матчі для ставок</h2>
-{% if not is_logged_in %}
-  <p><a href="{{url_for('login')}}">Увійти</a> або <a href="{{url_for('register')}}">зареєструватися</a>.</p>
+{% if is_logged_in %}
+<p>Привіт, {{ current_user }}! <a href="{{ url_for('logout') }}">Вийти</a></p>
 {% else %}
-  <p>Привіт, {{current_user}}! <a href="{{url_for('logout')}}">Вийти</a></p>
-  <form method="post" action="{{url_for('make_bets')}}">
-  <table>
-   <tr><th>Тур</th><th class="champ-col">Чемпіонат</th><th>Команди</th><th>Час</th><th>Ставка</th><th>Дії</th></tr>
-   {% for m in center_matches %}
-   <tr>
-    <td>{{m.round}}</td>
-    <td class="champ-col">{{m.championship.replace(' ','<br>')|safe}}</td>
-    <td><a href="{{m.link_team1}}" target="_blank">{{m.team1}}</a> - <a href="{{m.link_team2}}" target="_blank">{{m.team2}}</a></td>
-    <td>{{m.start_time_local}}</td>
-    <td>
-      <label><input type="radio" name="bet_{{m.id}}" value="P1" {% if bets.get(m.id)=='P1' %}checked{% endif %}> П1</label>
-      <label><input type="radio" name="bet_{{m.id}}" value="X"  {% if bets.get(m.id)=='X'  %}checked{% endif %}> Х</label>
-      <label><input type="radio" name="bet_{{m.id}}" value="P2" {% if bets.get(m.id)=='P2' %}checked{% endif %}> П2</label>
-      <label><input type="radio" name="bet_{{m.id}}" value=""   {% if bets.get(m.id) is none %}checked{% endif %}> —</label>
-    </td>
-    <td>
-      {% if is_admin %}
-        <a href="{{url_for('admin_edit_match',match_id=m.id)}}">Редагувати</a> |
-        <form style="display:inline" method="post" action="{{url_for('admin_delete_match',match_id=m.id)}}">
-          <button class="btn btn-danger">DEL</button>
+<p><a href="{{ url_for('login') }}">Увійти</a> або <a href="{{ url_for('register') }}">Зареєструватися</a></p>
+{% endif %}
+
+<h2>Матчі</h2>
+
+{% for match in left_matches %}
+<div class="match {{ match.status }}">
+    <strong>{{ match.championship }} — Раунд {{ match.round }}</strong><br/>
+    <a href="{{ match.link_team1 }}" target="_blank">{{ match.team1 }}</a> — 
+    <a href="{{ match.link_team2 }}" target="_blank">{{ match.team2 }}</a><br/>
+    Старт: {{ match.start_time_local }}<br/>
+    Статус: {{ match.status }}<br/>
+    Рахунок: {{ match.score }}<br/>
+    {% if is_logged_in %}
+    <div class="bets">
+        <form method="post" action="{{ url_for('make_bet', match_id=match.id) }}">
+            <label><input type="radio" name="bet" value="P1" {% if bets.get(match.id) == 'P1' %}checked{% endif %}/> {{ match.team1 }} виграє</label><br/>
+            <label><input type="radio" name="bet" value="P2" {% if bets.get(match.id) == 'P2' %}checked{% endif %}/> {{ match.team2 }} виграє</label><br/>
+            <label><input type="radio" name="bet" value="Draw" {% if bets.get(match.id) == 'Draw' %}checked{% endif %}/> Нічия</label><br/>
+            <input type="submit" value="Поставити" />
         </form>
-      {% else %}—{% endif %}
-    </td>
-   </tr>
-   {% endfor %}
-  </table>
-  <button class="btn">Зберегти ставки</button>
-  </form>
-{% endif %}
-{% if is_admin %}
- <hr><h3>Додати матч</h3>
- <form method="post" action="{{url_for('admin_add_match')}}">
-   Тур:<input type="number" name="round" required><br/>
-   Чемпіонат:<input type="text" name="championship" required><br/>
-   Команда 1:<input type="text" name="team1" required><br/>
-   URL 1:<input type="url" name="link_team1" placeholder="https://..." required><br/>
-   Команда 2:<input type="text" name="team2" required><br/>
-   URL 2:<input type="url" name="link_team2" placeholder="https://..." required><br/>
-   Час (Київ):<input type="datetime-local" name="start_time" required><br/>
-   <button class="btn btn-success">Додати</button>
- </form>
-{% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endfor %}
+
+<h2>Майбутні матчі</h2>
+
+{% for match in center_matches %}
+<div class="match upcoming">
+    <strong>{{ match.championship }} — Раунд {{ match.round }}</strong><br/>
+    <a href="{{ match.link_team1 }}" target="_blank">{{ match.team1 }}</a> — 
+    <a href="{{ match.link_team2 }}" target="_blank">{{ match.team2 }}</a><br/>
+    Старт: {{ match.start_time_local }}<br/>
+    Статус: {{ match.status }}<br/>
+</div>
+{% endfor %}
+
+<h2>Турнірна таблиця</h2>
+<div class="leaderboard">
+    <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; color:#ddd;">
+        <thead>
+            <tr>
+                <th>Користувач</th>
+                <th>Виграші</th>
+                <th>Програші</th>
+                <th>Очки</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user, stats in leaderboard.items() %}
+            <tr>
+                <td>{{ user }}</td>
+                <td>{{ stats.wins }}</td>
+                <td>{{ stats.losses }}</td>
+                <td>{{ stats.points }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </div>
 
-<!-- Правий блок -->
-<div class="right block"><h2>Таблиця лідерів</h2>
-<table>
- <tr><th>Нік</th><th>W</th><th>L</th><th>Pts</th></tr>
- {% for u,s in leaderboard.items() %}
-   <tr><td>{{u}}</td><td>{{s.wins}}</td><td>{{s.losses}}</td><td>{{s.points}}</td></tr>
- {% endfor %}
-</table>
-</div>
-
-</div></body></html>
+</body>
+</html>
 '''
 
-# ---------- ROUTES ----------
+# Головна сторінка
 @app.route('/')
 def index():
     now = current_kyiv_time()
     for m in matches:
-        if m['status']=='upcoming' and m['start_time']<=now:
-            m['status']='live'
+        if m['status'] == 'upcoming' and m['start_time'] <= now:
+            m['status'] = 'live'
         m['start_time_local'] = m['start_time'].strftime('%H:%M %d.%m.%Y')
 
-    left  = [m for m in matches if m['status'] in ('live','finished')]
-    center= [m for m in matches if m['status']=='upcoming']
+    left  = [m for m in matches if m['status'] in ('live', 'finished')]
+    center= [m for m in matches if m['status'] == 'upcoming']
 
     user = session.get('user')
     bets = users[user]['bets'] if user in users else {}
+
     return render_template_string(
         PAGE_TEMPLATE,
         left_matches=left,
@@ -258,120 +206,106 @@ def index():
         leaderboard=calculate_leaderboard(),
         is_logged_in=(user in users),
         current_user=user,
-        is_admin=(user=='admin')
+        is_admin=(user == 'admin')
     )
 
-# --------- Auth ----------
-@app.route('/register', methods=['GET','POST'])
+# Реєстрація
+@app.route('/register', methods=['GET', 'POST'])
 def register():
-    if request.method=='POST':
-        nick=request.form['username'].strip().lower()
-        pwd=request.form['password']
-        if nick in users: return "Нік зайнятий"
-        users[nick]={'password_hash':generate_password_hash(pwd),'bets':{}}
-        session['user']=nick
-        return redirect('/')
-    return '<h2>Реєстрація</h2><form method=post>Нік:<input name=username required><br>Пароль:<input type=password name=password required><br><button>OK</button></form>'
-
-@app.route('/login', methods=['GET','POST'])
-def login():
-    if request.method=='POST':
-        nick=request.form['username'].strip().lower()
-        pwd=request.form['password']
-        if nick in users and check_password_hash(users[nick]['password_hash'],pwd):
-            session['user']=nick; return redirect('/')
-        return "Невірний нік або пароль"
-    return '<h2>Вхід</h2><form method=post>Нік:<input name=username required><br>Пароль:<input type=password name=password required><br><button>OK</button></form>'
-
-@app.route('/logout')
-def logout():
-    session.pop('user',None); return redirect('/')
-
-# --------- Bets ----------
-@app.route('/make_bets', methods=['POST'])
-def make_bets():
-    if 'user' not in session: return redirect('/login')
-    u=session['user']; b=users[u]['bets']
-    for m in matches:
-        val=request.form.get(f'bet_{m["id"]}','')
-        if val in ('P1','X','P2'): b[m['id']]=val
-        else: b.pop(m['id'],None)
-    return redirect('/')
-
-# --------- Admin ----------
-@app.route('/admin/add_match', methods=['POST'])
-@admin_required
-def admin_add_match():
-    try:
-        new={
-            'id':get_next_match_id(),
-            'round':int(request.form['round']),
-            'championship':request.form['championship'],
-            'team1':request.form['team1'],'team2':request.form['team2'],
-            'link_team1':request.form['link_team1'],'link_team2':request.form['link_team2'],
-            'start_time':KYIV_TZ.localize(datetime.datetime.strptime(request.form['start_time'],'%Y-%m-%dT%H:%M')),
-            'status':'upcoming','score':'','result':''
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        if username in users:
+            return "Користувач вже існує!"
+        users[username] = {
+            'password_hash': generate_password_hash(password),
+            'bets': {}
         }
-        matches.append(new)
-    except Exception as e: return f'Помилка: {e}',400
-    return redirect('/')
-
-@app.route('/admin/delete_match/<int:match_id>', methods=['POST'])
-@admin_required
-def admin_delete_match(match_id):
-    global matches; matches=[m for m in matches if m['id']!=match_id]
-    for u in users.values(): u['bets'].pop(match_id,None)
-    return redirect('/')
-
-@app.route('/admin/toggle_status/<int:match_id>', methods=['POST'])
-@admin_required
-def admin_toggle_status(match_id):
-    for m in matches:
-        if m['id']==match_id:
-            m['status']='finished' if m['status']=='live' else 'live'
-            break
-    return redirect('/')
-
-@app.route('/admin/update_score/<int:match_id>', methods=['POST'])
-@admin_required
-def admin_update_score(match_id):
-    sc=request.form['score'].strip(); res=request.form['result']
-    for m in matches:
-        if m['id']==match_id:
-            m['score']=sc; m['result']=res if res in ('P1','X','P2') else ''
-            if m['result']: m['status']='finished'
-            break
-    return redirect('/')
-
-@app.route('/admin/edit_match/<int:match_id>', methods=['GET','POST'])
-@admin_required
-def admin_edit_match(match_id):
-    m=next((x for x in matches if x['id']==match_id),None)
-    if not m: return "Матч не знайдено"
-    if request.method=='POST':
-        try:
-            m.update(
-                round=int(request.form['round']),
-                championship=request.form['championship'],
-                team1=request.form['team1'], team2=request.form['team2'],
-                link_team1=request.form['link_team1'], link_team2=request.form['link_team2']
-            )
-            m['start_time']=KYIV_TZ.localize(datetime.datetime.strptime(request.form['start_time'],'%Y-%m-%dT%H:%M'))
-            return redirect('/')
-        except Exception as e: return f'Помилка: {e}',400
-    return f'''
-    <h2>Редагувати матч #{match_id}</h2>
+        session['user'] = username
+        return redirect(url_for('index'))
+    return '''
     <form method="post">
-      Тур:<input type=number name=round value="{m['round']}" required><br/>
-      Чемпіонат:<input name=championship value="{m['championship']}" required><br/>
-      Team1:<input name=team1 value="{m['team1']}" required><br/>
-      Link1:<input name=link_team1 value="{m['link_team1']}" required><br/>
-      Team2:<input name=team2 value="{m['team2']}" required><br/>
-      Link2:<input name=link_team2 value="{m['link_team2']}" required><br/>
-      Час:<input type=datetime-local name=start_time value="{m['start_time'].strftime('%Y-%m-%dT%H:%M')}" required><br/>
-      <button>Зберегти</button>
-    </form><p><a href="/">Назад</a></p>
+      Користувач: <input name="username"/><br/>
+      Пароль: <input type="password" name="password"/><br/>
+      <input type="submit" value="Зареєструватись"/>
+    </form>
     '''
 
-if __name__ == '__main__':
-    app.run(debug=True)
+# Логін
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        user = users.get(username)
+        if user and check_password_hash(user['password_hash'], password):
+            session['user'] = username
+            return redirect(url_for('index'))
+        return "Невірний логін або пароль"
+    return '''
+    <form method="post">
+      Користувач: <input name="username"/><br/>
+      Пароль: <input type="password" name="password"/><br/>
+      <input type="submit" value="Увійти"/>
+    </form>
+    '''
+
+# Вихід
+@app.route('/logout')
+def logout():
+    session.pop('user', None)
+    return redirect(url_for('index'))
+
+# Робота зі ставками
+@app.route('/bet/<int:match_id>', methods=['POST'])
+def make_bet(match_id):
+    user = session.get('user')
+    if not user:
+        return redirect(url_for('login'))
+    bet = request.form.get('bet')
+    if bet not in ['P1', 'P2', 'Draw']:
+        return "Невірна ставка!"
+    users[user]['bets'][match_id] = bet
+    return redirect(url_for('index'))
+
+# Адмін: додати матч (приклад)
+@app.route('/admin/add_match', methods=['GET', 'POST'])
+@admin_required
+def add_match():
+    if request.method == 'POST':
+        try:
+            new_id = max(m['id'] for m in matches) + 1
+        except ValueError:
+            new_id = 1
+        matches.append({
+            'id': new_id,
+            'round': int(request.form['round']),
+            'championship': request.form['championship'],
+            'team1': request.form['team1'],
+            'team2': request.form['team2'],
+            'link_team1': request.form['link_team1'],
+            'link_team2': request.form['link_team2'],
+            'start_time': KYIV_TZ.localize(datetime.datetime.strptime(request.form['start_time'], '%Y-%m-%d %H:%M')),
+            'status': 'upcoming',
+            'score': '',
+            'result': ''
+        })
+        return redirect(url_for('index'))
+    return '''
+    <form method="post">
+      Раунд: <input name="round" type="number"/><br/>
+      Чемпіонат: <input name="championship"/><br/>
+      Команда 1: <input name="team1"/><br/>
+      Команда 2: <input name="team2"/><br/>
+      Посилання на команду 1: <input name="link_team1"/><br/>
+      Посилання на команду 2: <input name="link_team2"/><br/>
+      Дата і час старту (YYYY-MM-DD HH:MM): <input name="start_time"/><br/>
+      <input type="submit" value="Додати матч"/>
+    </form>
+    '''
+
+# Запуск сервера (для Render)
+if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
