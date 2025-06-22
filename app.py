@@ -111,7 +111,17 @@ PAGE_TEMPLATE = '''
  a{color:#337ab7;text-decoration:none;}a:hover{text-decoration:underline;}
  .status-live{background:#5cb85c;color:#fff;font-weight:bold;padding:3px 6px;border-radius:4px;}
  .status-finished{background:#d9534f;color:#fff;font-weight:bold;padding:3px 6px;border-radius:4px;}
-</style></head><body>
+</style>
+<script>
+/* підтвердження скидання таблиці результатів */
+function confirmReset(){
+  if (confirm("Ви впевнені, що хочете скинути таблицю результатів?")){
+      document.getElementById('resetForm').submit();
+  }
+}
+</script>
+</head><body>
+
 <div class="container">
 
 <!-- Лівий блок -->
@@ -215,6 +225,16 @@ PAGE_TEMPLATE = '''
 
 <!-- Правий блок -->
 <div class="right block"><h2>Таблиця лідерів</h2>
+{% if is_admin %}
+<form id="resetForm" method="post" action="{{ url_for('admin_reset_board') }}" style="margin-bottom:8px;">
+  <!-- синя кругла кнопка зі стрілкою -->
+  <button type="button" class="btn" style="background:#337ab7;border-radius:50%;padding:4px 8px;font-size:18px;"
+          onclick="confirmReset()">
+    &#8635;
+  </button>
+</form>
+{% endif %}
+
 <table>
  <tr><th>Нік</th><th>W</th><th>L</th><th>Pts</th></tr>
  {% for u,s in leaderboard.items() %}
@@ -362,6 +382,14 @@ def admin_edit_match(match_id):
       <button>Зберегти</button>
     </form><p><a href="/">Назад</a></p>
     '''
+# --- скидання таблиці результатів ---------------------------------
+@app.route('/admin/reset_board', methods=['POST'])
+@admin_required
+def admin_reset_board():
+    # просто очищаємо всі ставки користувачів → W/L/Pts стануть 0
+    for data in users.values():
+        data['bets'].clear()
+    return redirect('/')
 
 import os
 
