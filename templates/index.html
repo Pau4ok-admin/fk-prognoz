@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<title>Ставки на матчі</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="container">
+
+  <div class="left block">
+    <h2>Матчі в процесі / завершені</h2>
+    <table>
+      <tr>
+        <th>Тур</th><th>Чемпіонат</th><th>Команди</th><th>Час</th><th>Рахунок</th><th>Результат</th><th>Статус</th>{% if is_admin %}<th>Дії</th>{% endif %}
+      </tr>
+      {% for m in left_matches %}
+      <tr>
+        <td>{{m.round}}</td>
+        <td>{{m.championship}}</td>
+        <td>{{m.team1}} - {{m.team2}}</td>
+        <td>{{m.start_time_local}}</td>
+        <td>{{m.score if m.score else "-"}}</td>
+        <td>
+          {% if m.status == 'live' and not m.result %}
+            LIVE
+          {% else %}
+            {{m.result if m.result else "---"}}
+          {% endif %}
+        </td>
+        <td>
+          {% if m.status == 'live' %}
+            <span class="status-live">LIVE</span>
+          {% elif m.status == 'finished' %}
+            <span class="status-finished">Завершено</span>
+          {% endif %}
+        </td>
+        {% if is_admin %}
+        <td>
+          <form method="post" action="{{ url_for('admin_toggle_status', match_id=m.id) }}" style="display:inline-block;">
+            {% if m.status == 'live' %}
+              <button class="btn btn-danger" type="submit" title="Завершити матч">Завершити</button>
+            {% elif m.status == 'finished' %}
+              <button class="btn btn-success" type="submit" title="Повернути в LIVE">Відновити LIVE</button>
+            {% endif %}
+          </form>
+          <form method="post" action="{{ url_for('admin_update_score', match_id=m.id) }}" style="display:inline-block;">
+            <input name="score" type="text" value="{{m.score}}" placeholder="Рахунок" size="5" required />
+            <select name="result" required>
+              <option value="" {% if not m.result %}selected{% endif %}>---</option>
+              <option value="P1" {% if m.result == 'P1' %}selected{% endif %}>П1</option>
+              <option value="X" {% if m.result == 'X' %}selected{% endif %}>Х</option>
+              <option value="P2" {% if m.result == 'P2' %}selected{% endif %}>П2</option>
+            </select>
+            <button class="btn" type="submit" title="Оновити рахунок">Оновити</button>
+          </form>
+          <form method="post" action="{{ url_for('admin_delete_match', match_id=m.id) }}" style="display:inline-block;">
+            <button class="btn btn-danger" type="submit" title="Видалити матч">Видалити</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div class="center block">
+    <h2>Матчі для ставок</h2>
+    {% if not is_logged_in %}
+      <p><a href="{{ url_for('login') }}">Увійти</a> або <a href="{{ url_for('register') }}">зареєструватися</a>, щоб робити ставки.</p>
+    {% else %}
+      <p>Привіт, {{ current_user }}! <a href="{{ url_for('logout') }}">Вийти</a></p>
+      <form method="post" action="{{ url_for('make_bets') }}">
+      <table>
+        <tr>
+          <th>Тур</th><th>Чемпіонат</th><th>Команди</th><th>Час</th><th>Ваша ставка</th><th>Дії</th>
+        </tr>
+        {% for m in center_matches %}
+        <tr>
+          <td>{{m.round}}</td>
+          <td>{{m.championship}}</td>
+          <td>{{m.team1}} - {{m.team2}}</td>
+          <td>{{m.start_time_local}}</td>
+          <td>
+            <label class="bet-option"><input type="radio" name="bet_{{m.id}}" value="P1" {% if bets.get(m.id) == 'P1' %}checked{% endif %}> П1</label>
+            <label class="bet-option"><input type="radio" name="bet_{{m.id}}" value="X" {% if bets.get(m.id) == 'X' %}checked{% endif %}> Х</label>
+            <label class="bet-option"><input type="radio" name="bet_{{m.id}}" value="P2" {% if bets.get(m.id) == 'P2' %}checked{% endif %}> П2</label>
+            <label class="bet-option"><input type="radio" name="bet_{{m.id}}" value="" {% if not bets.get(m.id) %}checked{% endif %}> —</label>
+          </td>
+          <td>
+            {% if is_admin %}
+            <a href="{{ url_for('admin_edit_match', match_id=m.id) }}">Редагувати</a> |
+            <form method="post" action="{{ url_for('admin_delete_match', match_id=m.id) }}" style="display:inline;">
+              <button class="btn btn-danger" type="submit" title="Видалити матч">Видалити</button>
+            </form>
+            {% else %}
+            ---
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+      <button class="btn" type="submit">Зберегти ставки</button>
+      </form>
+    {% endif %}
+    {% if is_admin %}
+      <hr />
+      <h3>Додати новий матч</h3>
+      <form method="post" action="{{ url_for('admin_add_match') }}">
+        <label>Тур: <input type="number" name="round" required></label><br/>
+        <label>Чемпіонат: <input type="text" name="championship" required></label><br/>
+        <label>Команда 1: <input type="text" name="team1" required></label><br/>
+        <label>Команда 2: <input type="text" name="team2" required></label><br/>
+        <label>Час початку (Київський час): <input type="datetime-local" name="start_time" required></label><br/>
+        <button class="btn" type="submit">Додати матч</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="right block">
+    <h2>Таблиця лідерів</h2>
+    <table>
+      <tr><th>Нік</th><th>Перемоги</th><th>Програші</th><th>Очки</th></tr>
+      {% for user, stats in leaderboard.items() %}
+      <tr>
+        <td>{{user}}</td>
+        <td>{{stats.wins}}</td>
+        <td>{{stats.losses}}</td>
+        <td>{{stats.points}}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+</div>
+</body>
+</html>
